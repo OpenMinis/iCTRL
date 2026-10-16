@@ -29,9 +29,9 @@ struct SettingsView: View {
     /// — wondering whether anything happened.
     private static let runnerURL = URL(string: "ictrl://start?callback=ictrl-app://started")!
 
-    /// Stopping goes through the URL scheme too. The only other route is
-    /// `config{stop_server:true}` over /rpc, which needs an encrypted envelope —
-    /// and this app deliberately holds no pairing key.
+    /// Fallback for stopping when this app is not paired with the runner: the
+    /// runner then asks for confirmation on the device (any app can open this
+    /// URL). Paired, the app stops it with `config{stop_server:true}` instead.
     private static let runnerStopURL = URL(string: "ictrl://stop?callback=ictrl-app://stopped")!
 
     /// Provides the local loopback tunnel StikDebug needs to reach lockdownd.
@@ -371,9 +371,21 @@ struct SettingsView: View {
     }
 
     private func stopRunner() {
-        // Opening the runner's scheme brings it to the front, where it stops its
-        // server and ends the test. It bounces back here afterwards, but the
-        // probe is what settles the displayed state.
+        // Paired with the runner: stop it over the encrypted channel.
+        // Otherwise open its scheme, which (any app being able to open it)
+        // only posts a confirmation on the device; the probe then settles the
+        // displayed state.
+        Task {
+            if await runnerAdmin.stopRunner() {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                await runner.check()
+                return
+            }
+            await MainActor.run { openRunnerStopURL() }
+        }
+    }
+
+    private func openRunnerStopURL() {
         UIApplication.shared.open(Self.runnerStopURL) { _ in
             Task {
                 // Give the runner a moment to actually tear the listener down;

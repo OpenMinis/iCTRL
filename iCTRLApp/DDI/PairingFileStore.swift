@@ -1,15 +1,16 @@
 import Foundation
+import IDevice
 import UniformTypeIdentifiers
 
 /// Where the device pairing record lives.
 ///
-/// The pairing file is what `idevicepair pair` writes on a Mac: a plist holding
-/// the host certificate and keys that let a client authenticate to this device's
-/// `lockdownd`. Mounting a DDI needs one because the mount goes through the same
-/// trusted channel Xcode would use.
-///
-/// Only its *path* matters to the mounting code — the plist is parsed by the
-/// idevice library, never here.
+/// The mount opens a RemotePairing tunnel to this device, so the file has to be
+/// a RemotePairing (RP) record: a plist with an Ed25519 `public_key` /
+/// `private_key` pair and a host `identifier` (plus an optional `alt_irk`).
+/// That is what StikDebug stores (`pairingFile.plist`, formerly
+/// `rp_pairing_file.plist`) and what idevice_pair writes for "Remote pairing".
+/// An older lockdown record (`HostID`, `HostCertificate`, … as written by
+/// `idevicepair pair` or kept by SideStore) cannot open that tunnel.
 enum PairingFileStore {
 
     /// Types the import picker accepts.
@@ -125,23 +126,39 @@ enum PairingFileStore {
         try? FileManager.default.removeItem(at: storedURL)
     }
 
-    /// Reject anything that clearly isn't a pairing record, so the failure lands
-    /// at import time with a clear message instead of surfacing later as an
-    /// opaque error from deep inside the mount.
-    private static func validate(_ data: Data) throws {
-        guard let plist = try? PropertyListSerialization.propertyList(
-                from: data, options: [], format: nil) as? [String: Any] else {
-            throw DDIError.invalidPairingFile("Not a property list. Expected the file "
-                + "`idevicepair pair` writes (a .plist / .mobiledevicepairing).")
+    /// Reject anything the mount could not use, so the failure lands at import
+    /// time with a clear message instead of surfacing later as an opaque error
+    /// from deep inside the mount.
+    ///
+    /// The check is the parser the mount itself uses, so a file that passes
+    /// here is one the mount can read. The plist is only inspected to explain
+    /// a rejection.
+    static func validate(_ data: Data) throws {
+        if parsesAsRemotePairing(data) { return }
+
+        let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        guard let dict = plist as? [String: Any] else {
+            throw DDIError.invalidPairingFile("Not a property list. Expected a RemotePairing file, "
+                + "such as StikDebug's pairingFile.plist.")
         }
-        // These are the fields a lockdown pairing record always carries.
-        let required = ["HostID", "HostCertificate", "HostPrivateKey"]
-        let missing = required.filter { plist[$0] == nil }
-        guard missing.isEmpty else {
-            throw DDIError.invalidPairingFile(
-                "Missing \(missing.joined(separator: ", ")). This looks like a "
-                + "property list but not a pairing record — re-export it with "
-                + "`idevicepair pair` (libimobiledevice) or pymobiledevice3.")
+        if dict["HostID"] != nil || dict["HostCertificate"] != nil {
+            throw DDIError.invalidPairingFile("This is a lockdown pairing file (as written by "
+                + "`idevicepair pair` or kept by SideStore). Mounting needs a RemotePairing file: "
+                + "use StikDebug's pairingFile.plist, or create one with idevice_pair "
+                + "(choose Remote pairing) or iLoader.")
         }
+        throw DDIError.invalidPairingFile("A property list, but not a RemotePairing file: it needs "
+            + "public_key, private_key and identifier.")
+    }
+
+    private static func parsesAsRemotePairing(_ data: Data) -> Bool {
+        var handle: OpaquePointer?
+        let err = data.withUnsafeBytes { raw -> UnsafeMutablePointer<IdeviceFfiError>? in
+            guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return nil }
+            return rp_pairing_file_from_bytes(base, UInt(raw.count), &handle)
+        }
+        if let err { idevice_error_free(err) }
+        if let handle { rp_pairing_file_free(handle) }
+        return err == nil && handle != nil
     }
 }

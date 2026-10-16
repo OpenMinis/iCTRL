@@ -157,6 +157,23 @@ final class RunnerAdmin: ObservableObject {
         await loadClients()
     }
 
+    // MARK: - Stop
+
+    /// Stop the runner over the encrypted channel. Returns false when that is
+    /// not possible (not paired, or the call failed), so the caller can fall
+    /// back to ictrl://stop, which only asks for confirmation on the device.
+    func stopRunner() async -> Bool {
+        guard client.isPaired else { return false }
+        do {
+            _ = try await client.call("config", ["stop_server": true])
+            ictrlLog("Runner admin: stopped the runner")
+            return true
+        } catch {
+            handle(error)
+            return false
+        }
+    }
+
     // MARK: - Logs
 
     func loadLogs() async {

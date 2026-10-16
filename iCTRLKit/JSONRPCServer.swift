@@ -510,9 +510,10 @@ class JSONRPCServer {
         // Which device this is, before any key is chosen: clients store one
         // key per device and look it up by this id.
         case ("GET", "/whoami"):
+            // Only what a client needs to pick its key: the name and anything
+            // else about the device stay behind authentication (device_info).
             let info: [String: Any] = [
                 "device_id": NearbyIdentity.deviceID,
-                "name": NearbyIdentity.name,
                 "protocol_version": RPCMethodRegistry.protocolVersion,
                 "server_version": RPCMethodRegistry.serverVersion,
             ]

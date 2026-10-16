@@ -23,6 +23,8 @@ final class iCTRLUITests: XCTestCase, UNUserNotificationCenterDelegate {
     static let serverRemoteCategoryID = "SERVER_REMOTE"
     static let serverNearbyCategoryID = "SERVER_NEARBY"
     static let serverStoppedCategoryID = "SERVER_STOPPED"
+    static let stopConfirmCategoryID = "SERVER_STOP_CONFIRM"
+    static let stopConfirmNotifID = "ictrl.server.stop-confirm"
     static let enableRemoteActionID = "ENABLE_REMOTE"
     static let disableRemoteActionID = "DISABLE_REMOTE"
     static let enableNearbyActionID = "ENABLE_NEARBY"
@@ -644,22 +646,23 @@ final class iCTRLUITests: XCTestCase, UNUserNotificationCenterDelegate {
 
         let host = url.host?.lowercased()
 
-        // ictrl://stop — shut the server down and end the test.
+        // ictrl://stop — ask to stop the server.
         //
-        // This exists because /rpc is the only other way to stop the server and
-        // it requires an encrypted envelope, which the host app has no key for.
-        // The URL scheme is the same trust boundary as ictrl://start: only
-        // something already on this device can open it.
+        // Any app on the device, or a web page via Safari, can open this URL,
+        // and the runner cannot tell who did. So it does not stop anything by
+        // itself: it posts a confirmation whose Stop action needs the device
+        // unlocked. (The iCTRL app, once paired, stops the runner over the
+        // encrypted channel instead and never comes here.)
         if host == "stop" {
-            Self.logBuffer.append("🔗 ictrl://stop — shutting down")
+            Self.logBuffer.append("🔗 ictrl://stop — asking for confirmation on the device")
+            sendNotification(title: L10n.t(.stopConfirmTitle), body: L10n.t(.stopConfirmBody),
+                             category: Self.stopConfirmCategoryID, identifier: Self.stopConfirmNotifID)
             let callback = items.first(where: { $0.name == "callback" })?.value
                 .flatMap { Self.normalizeCallback($0) }
-            server?.stop()
-            keepRunning = false
             if let callback {
                 var cb = URLComponents(url: callback, resolvingAgainstBaseURL: false)
                 var q = cb?.queryItems ?? []
-                q.append(URLQueryItem(name: "status", value: "stopped"))
+                q.append(URLQueryItem(name: "status", value: "confirm"))
                 cb?.queryItems = q
                 if let final = cb?.url { openCallback(final, attempt: 1) }
             }
@@ -697,7 +700,11 @@ final class iCTRLUITests: XCTestCase, UNUserNotificationCenterDelegate {
         var cb = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)
         var q = cb?.queryItems ?? []
         q.append(URLQueryItem(name: "status", value: status))
-        q.append(URLQueryItem(name: "address", value: address))
+        // Whoever opened ictrl://start chose the callback, so the address goes
+        // only to the companion app's scheme; anyone else learns the status.
+        if callbackURL.scheme?.lowercased() == Self.companionScheme {
+            q.append(URLQueryItem(name: "address", value: address))
+        }
         cb?.queryItems = q
 
         guard let finalURL = cb?.url else {
@@ -716,6 +723,9 @@ final class iCTRLUITests: XCTestCase, UNUserNotificationCenterDelegate {
 
     /// Accept a callback either as a full URL ("minis://home") or as a bare scheme
     /// ("minis" → "minis://"), so callers don't have to URL-encode a scheme.
+    /// The iCTRL app's URL scheme.
+    static let companionScheme = "ictrl-app"
+
     static func normalizeCallback(_ raw: String) -> URL? {
         if let u = URL(string: raw), u.scheme != nil {
             return u
@@ -827,10 +837,12 @@ final class iCTRLUITests: XCTestCase, UNUserNotificationCenterDelegate {
         )
 
         // Stopped category: Copy Logs
+        // Unlock first: the log can hold what was typed on the device, and a
+        // locked phone's notifications are within anyone's reach.
         let copyLogsAction = UNNotificationAction(
             identifier: Self.copyLogsActionID,
             title: L10n.t(.copyLogs),
-            options: []
+            options: [.authenticationRequired]
         )
         let serverStoppedCategory = UNNotificationCategory(
             identifier: Self.serverStoppedCategoryID,
@@ -839,8 +851,17 @@ final class iCTRLUITests: XCTestCase, UNUserNotificationCenterDelegate {
             options: []
         )
 
+        // Confirmation for a stop requested through ictrl://stop: any app can
+        // open that URL, so it only asks; stopping takes an unlocked device.
+        let stopConfirmCategory = UNNotificationCategory(
+            identifier: Self.stopConfirmCategoryID,
+            actions: [stopServerAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
         center.setNotificationCategories([authCategory, serverReadyCategory, serverRemoteCategory,
-                                          serverNearbyCategory, serverStoppedCategory])
+                                          serverNearbyCategory, serverStoppedCategory, stopConfirmCategory])
 
         // Whatever a previous run left in Notification Centre is stale: pairing
         // prompts can no longer be answered (their requests died with that
@@ -870,7 +891,9 @@ final class iCTRLUITests: XCTestCase, UNUserNotificationCenterDelegate {
 
         // Handle "Copy Logs"
         if actionID == Self.copyLogsActionID {
-            let logs = Self.logBuffer.dump()
+            // The same redaction as the log files: the clipboard leaves the
+            // runner's control (other apps, Universal Clipboard).
+            let logs = Self.logBuffer.dumpRedacted()
             UIPasteboard.general.string = logs
             Self.logBuffer.append("📋 Copied \(Self.logBuffer.count) log entries to clipboard")
             completionHandler()
