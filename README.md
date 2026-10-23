@@ -575,6 +575,32 @@ All methods are JSON-RPC 2.0 (`POST /rpc`). Highlights:
 | **Device** | `device_info`, `home`, `lock`, `unlock`, `is_locked`, `wait` |
 | **Server** | `config` (remote access, `nearby_discovery`, `device_name`, sessions and revocation, `stop_server`), `reset`, `stream_ticket` |
 
+### Continuous single-finger paths
+
+`drag` accepts an optional `points` array to follow a polyline without lifting
+between waypoints. This supports drawing and dragging around corners. It is a
+single finger, not simultaneous multi-touch. Existing endpoint/ref calls are
+unchanged.
+
+```json
+{"method":"drag","params":{"points":[{"x":50,"y":200},{"x":150,"y":200},{"x":150,"y":300}],"duration":1.2}}
+```
+
+Coordinates are screen **points**, not screenshot pixels. Supply 2–64 finite,
+nonnegative, on-screen `{x,y}` points. Do not combine `points` with
+`from_x/from_y/to_x/to_y` or `from_ref/to_ref`. Total `duration` is 0.1–10 seconds
+(default 1), divided equally between segments; repeating a waypoint holds the
+finger there for that segment. All waypoints are validated before any touch is
+injected. The finger presses once at the first point and lifts once after the
+last point. The normal challenge check uses the actual path start, and long
+paths receive enough RPC time for the gesture and settle check to finish.
+
+Run the validation/timing tests on a Mac with the Swift toolchain:
+
+```sh
+./Scripts/test-continuous-drag.sh
+```
+
 Notable behaviour:
 
 - **`page_source{visible_only, max_children}`** — on a recycling list (chat

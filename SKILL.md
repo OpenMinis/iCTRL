@@ -1,6 +1,6 @@
 ---
 name: ictrl-phone-control
-description: Control an iPhone over HTTP to automate real apps — tap, type, swipe, read the screen's view tree, launch apps, take screenshots. Use when the user asks to operate a phone, drive an iOS app, automate a mobile task (search a product, check an order, fill a form), or inspect what's on a device's screen. The service is iCTRL, JSON-RPC 2.0 on port 8200; requests are encrypted, so drive it with a client downloaded from the device (a static CLI needing no interpreter, or a Python one) rather than hand-written HTTP.
+description: Control iPhone apps with iCTRL's encrypted HTTP API. Tap, type, swipe, read UI and take screenshots with its CLI or Python client.
 skill_version: "1.98.13"
 ---
 
@@ -133,6 +133,7 @@ Most responses carry a **`hint`** (what limited the result, what to do next) —
 ## Coordinates and screenshots
 
 - `tap`/`swipe`/`drag`, `page_source` frames and OCR boxes are all **points**.
+- `drag{points:[{x,y},...],duration?}`: one finger, 2–64 waypoints, no lift at corners. Duration 0.1–10s (default 1), equal time per segment; repeated points hold. Do not mix with endpoint coordinates/refs.
 - Screenshots are pixels: `point = pixel / scale`, using the **`scale` from that screenshot response** (default 2), not `device_info.screen_scale` (the panel's 3).
 
 ## Diagnostics

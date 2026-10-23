@@ -1173,8 +1173,9 @@ final class iCTRLUITests: XCTestCase, UNUserNotificationCenterDelegate {
     private static let extendedTimeoutMethods: Set<String> = ["page_source", "find_and_tap", "tap_element", "collect", "screen_text"]
     private static let extendedRpcTimeout: TimeInterval = 15
 
-    private static func rpcBudget(for method: String) -> TimeInterval {
-        extendedTimeoutMethods.contains(method) ? extendedRpcTimeout : rpcTimeout
+    private static func rpcBudget(for method: String, params: [String: JSONValue]?) -> TimeInterval {
+        if method == "drag" { return ContinuousDragPath.rpcBudget(params, defaultBudget: rpcTimeout) }
+        return extendedTimeoutMethods.contains(method) ? extendedRpcTimeout : rpcTimeout
     }
 
     /// Wire RPC dispatch + public logs onto a server instance.
@@ -1302,7 +1303,7 @@ final class iCTRLUITests: XCTestCase, UNUserNotificationCenterDelegate {
             }
 
             // Watchdog: if the work doesn't finish in time, tell the client now.
-            let budget = Self.rpcBudget(for: method)
+            let budget = Self.rpcBudget(for: method, params: params)
             DispatchQueue.global().async {
                 if done.wait(timeout: .now() + budget) == .timedOut {
                     // Queued, not hung: this call never started because another

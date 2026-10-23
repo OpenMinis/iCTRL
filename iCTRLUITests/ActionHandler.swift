@@ -433,6 +433,7 @@ class ActionHandler {
 
         if Self.uiActionMethods.contains(method), cmd.bundleId == nil {
             let coordinateBased = (cmd.x != nil && cmd.y != nil) || (cmd.fromX != nil && cmd.fromY != nil)
+                || ContinuousDragPath.startPoint(cmd.dragPathParams) != nil
             // A ref into SpringBoard is the alert's own button (find_element
             // with bundle_id springboard hands those out): refusing it "because
             // an alert is up" made the alert impossible to answer by ref.
@@ -449,7 +450,8 @@ class ActionHandler {
         // A drag on an anti-bot slider is an attempt to solve it: refused.
         if ["swipe", "drag", "scroll"].contains(method), let c = lastChallenge, nowMonotonic - c.at < 120,
            c.bid == resolveForegroundBundleId() {
-            let start = cmd.fromX.flatMap { x in cmd.fromY.map { CGPoint(x: x, y: $0) } }
+            let start = ContinuousDragPath.startPoint(cmd.dragPathParams)
+                ?? cmd.fromX.flatMap { x in cmd.fromY.map { CGPoint(x: x, y: $0) } }
                 ?? cmd.x.flatMap { x in cmd.y.map { CGPoint(x: x, y: $0) } }
                 ?? CGPoint(x: pointSize.width / 2, y: pointSize.height / 2)
             if c.area.contains(start) {
@@ -471,7 +473,7 @@ class ActionHandler {
         // there now, which may not be what the caller last saw.
         let blind = Self.blindActionMethods.contains(method)
             && cmd.ref == nil && cmd.fromRef == nil && cmd.toRef == nil
-            && (method == "type" || method == "clear_text" || (cmd.x != nil && cmd.y != nil) || cmd.fromX != nil)
+            && (method == "type" || method == "clear_text" || (cmd.x != nil && cmd.y != nil) || cmd.fromX != nil || cmd.dragPathParams != nil)
         // A tap keeps the pre-action capture: if the coarse frames say nothing
         // changed, the area around where the finger landed (known only after
         // a ref resolves) gets one fine look.
@@ -7702,6 +7704,26 @@ class ActionHandler {
     // MARK: - Drag
 
     private func drag(_ cmd: ActionCommand) -> ([String: JSONValue]?, JSONRPCError?) {
+        if let params = cmd.dragPathParams {
+            let (path, error) = ContinuousDragPath.parse(params, screenSize: pointSize.size)
+            if let error = error { return (nil, error) }
+            guard let path = path else { return (nil, .internalError) }
+            let record = XCSynthesizedEventRecord(name: "Continuous Path Drag")
+            let touch = XCPointerEventPath(forTouchAt: path.points[0], offset: 0.0)
+            touch.pressDown(atOffset: 0.0)
+            for sample in path.samples {
+                touch.move(to: sample.point, atOffset: sample.offset)
+            }
+            touch.liftUp(atOffset: path.duration + 0.05)
+            record.add(touch)
+            do {
+                try record.synthesize()
+                return (["message": .string("Dragged continuous path through \(path.points.count) points"),
+                         "screen": coordinateHint], nil)
+            } catch {
+                return (nil, .serverError("Continuous drag failed: \(error.localizedDescription)"))
+            }
+        }
         // Endpoints can be given as coordinates OR as refs (from_ref/to_ref),
         // which resolve to the element's center. Refs take precedence.
         var fromX = cmd.fromX, fromY = cmd.fromY, toX = cmd.toX, toY = cmd.toY

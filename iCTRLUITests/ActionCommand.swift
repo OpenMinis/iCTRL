@@ -12,6 +12,7 @@ struct ActionCommand {
     var elementType: String?
     var bundleId: String?
     var fast: Bool?
+    var dragPathParams: [String: JSONValue]?
     var fromX: Double?
     var fromY: Double?
     var toX: Double?
@@ -59,6 +60,7 @@ struct ActionCommand {
         self.elementType = params?["element_type"]?.stringValue
         self.bundleId = params?["bundle_id"]?.stringValue
         self.fast = params?["fast"]?.boolValue
+        self.dragPathParams = method == "drag" && params?["points"] != nil ? params : nil
         self.fromX = params?["from_x"]?.doubleValue
         self.fromY = params?["from_y"]?.doubleValue
         self.toX = params?["to_x"]?.doubleValue
