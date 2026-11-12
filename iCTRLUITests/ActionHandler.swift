@@ -5528,8 +5528,12 @@ class ActionHandler {
     /// on top of the keyboard, and a band above it, take the touch too: from
     /// 120pt above the keyboard nothing moves, from 165pt it scrolls.
     private func pageBand(pages: Double) -> (bottom: Double, travel: Double) {
-        let h = pointSize.height
-        let bottom = pageKeyboardTop.map { max(h * 0.3, min($0 - 120, $0 * 0.72)) } ?? h * 0.78
+        // `h` is a CGFloat and `pageKeyboardTop` a Double. Mixed in one `??`
+        // chain, the compiler (Xcode 26 / Swift 6.2) picks the overload that
+        // returns `Double?`, so `bottom` becomes optional and the tuple return
+        // stops type-checking. Keep every term a Double, explicitly.
+        let h = Double(pointSize.height)
+        let bottom: Double = pageKeyboardTop.map { max(h * 0.3, min($0 - 120, $0 * 0.72)) } ?? h * 0.78
         return (bottom, (pageKeyboardTop == nil ? h * 0.66 : bottom - h * 0.12) * pages)
     }
 
