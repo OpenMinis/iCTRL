@@ -15,7 +15,7 @@ enum PairingFileStore {
 
     /// Types the import picker accepts.
     ///
-    /// `.fileImporter` matches a picked file's type against this list, and the
+    /// The document picker matches a picked file's type against this list, and the
     /// match has to hold for the file's *actual* UTI. A pairing record is an
     /// XML property list, which iOS types as `public.xml` — a sibling of
     /// `public.data`, not a subtype, so `.data` alone does not let it through.

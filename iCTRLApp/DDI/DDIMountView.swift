@@ -82,10 +82,10 @@ struct DDIMountView: View {
             .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
                 if !tunnelUp { refreshVPNState() }
             }
-            .fileImporter(isPresented: $showPairingPicker,
-                          allowedContentTypes: PairingFileStore.supportedContentTypes) { result in
-                switch result {
-                case .success(let url):
+            .sheet(isPresented: $showPairingPicker) {
+                PairingFilePicker { url in
+                    // The picker's copy holds the pairing secret: drop it once stored.
+                    defer { try? FileManager.default.removeItem(at: url) }
                     do {
                         try PairingFileStore.importFile(from: url)
                         hasPairingFile = true
@@ -93,9 +93,8 @@ struct DDIMountView: View {
                     } catch {
                         pairingError = error.localizedDescription
                     }
-                case .failure(let error):
-                    pairingError = error.localizedDescription
                 }
+                .ignoresSafeArea()
             }
         }
     }
@@ -387,6 +386,39 @@ struct DDIMountView: View {
                     .font(.caption2.bold())
                     .foregroundColor(.white)
             }
+        }
+    }
+}
+
+/// Document picker that hands back a copy of the chosen file.
+///
+/// `.fileImporter` opens files in place, and on some devices a file picked
+/// from On My iPhone then never reaches the completion handler: the picker
+/// stays up with no import and no error. Asking for a copy avoids that, and a
+/// copy is all the import needs.
+private struct PairingFilePicker: UIViewControllerRepresentable {
+    let onPick: (URL) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(
+            forOpeningContentTypes: PairingFileStore.supportedContentTypes, asCopy: true)
+        picker.allowsMultipleSelection = false
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ picker: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        private let onPick: (URL) -> Void
+
+        init(onPick: @escaping (URL) -> Void) { self.onPick = onPick }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController,
+                            didPickDocumentsAt urls: [URL]) {
+            if let url = urls.first { onPick(url) }
         }
     }
 }
