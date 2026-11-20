@@ -17,8 +17,8 @@
 # Why a script and not "any signing tool": the runner is an XCUITest host with a
 # nested test bundle, PlugIns/iCTRLUITests.xctest. That bundle needs its OWN
 # signature, applied before the app around it (inside out), and it must carry
-# the runner's bundle identifier. Most signing tools only recurse into
-# .framework/.appex, so they leave the .xctest with the original signature: the
+# an identifier under the runner's (<runner id>.tests). Most signing tools only
+# recurse into .framework/.appex, so they leave the .xctest with the original signature: the
 # package installs fine and then crashes the moment it launches, because the
 # test bundle's signature belongs to a different team than the app loading it.
 #
@@ -211,14 +211,14 @@ sign() {
         echo "$out" >&2; return 1; }
 }
 
-# ── 1. The .xctest takes the runner's bundle id ───────────────────────────
+# ── 1. The .xctest takes an id under the runner's ─────────────────────────
 # Must happen BEFORE signing so the edited Info.plist is sealed by the
-# signature. It shares the host's id rather than extending it the way an
-# .appex does.
+# signature. It extends the host's id the way an .appex does: iLoader refuses
+# a nested bundle whose id equals the main app's.
 for xctest in "$APP"/PlugIns/*.xctest; do
     [[ -d "$xctest" ]] || continue
-    $PB -c "Set :CFBundleIdentifier $BUNDLE_ID" "$xctest/Info.plist"
-    echo "   aligned $(basename "$xctest") → $BUNDLE_ID"
+    $PB -c "Set :CFBundleIdentifier $BUNDLE_ID.tests" "$xctest/Info.plist"
+    echo "   aligned $(basename "$xctest") → $BUNDLE_ID.tests"
 done
 
 # ── 2. Inside out: loose dylibs, frameworks, plug-ins, then the app ───────

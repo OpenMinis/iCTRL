@@ -165,17 +165,18 @@ ipa: build
 	/usr/libexec/PlistBuddy -c "Add :NSBonjourServices array" "$$PLIST"; \
 	/usr/libexec/PlistBuddy -c "Add :NSBonjourServices:0 string _ictrl._tcp" "$$PLIST"
 	@echo "🏷  Aligning .xctest bundle id with the Runner..."
-	@# Rewrite the embedded .xctest CFBundleIdentifier to match the Runner app id,
-	@# so the plugin and its host share one identifier. Done BEFORE the re-sign so
-	@# the new plist is covered by the signature. Runner id is read at runtime
-	@# (not hardcoded).
+	@# Rewrite the embedded .xctest CFBundleIdentifier to "<Runner app id>.tests".
+	@# It must sit under the Runner's id: iLoader refuses a nested bundle whose id
+	@# does not strictly extend the main app's (an equal id fails too). Done
+	@# BEFORE the re-sign so the new plist is covered by the signature. Runner
+	@# id is read at runtime (not hardcoded).
 	@set -e; \
 	RUNNER_PLIST="$(BUILD_DIR)/$(RUNNER_APP)/Info.plist"; \
 	XCTEST_PLIST="$(BUILD_DIR)/$(RUNNER_APP)/PlugIns/$(XCTEST_BUNDLE)/Info.plist"; \
 	RUNNER_ID="$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$$RUNNER_PLIST")"; \
 	OLD_ID="$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$$XCTEST_PLIST")"; \
-	/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $$RUNNER_ID" "$$XCTEST_PLIST"; \
-	echo "   .xctest: $$OLD_ID -> $$RUNNER_ID"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $$RUNNER_ID.tests" "$$XCTEST_PLIST"; \
+	echo "   .xctest: $$OLD_ID -> $$RUNNER_ID.tests"
 	@echo "🔏 Re-signing Runner (identity read back from what xcodebuild signed)..."
 	@# Read the signing identity xcodebuild actually used, straight off the built
 	@# app — this reflects the Xcode project's automatic signing (team + cert),

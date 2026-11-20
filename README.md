@@ -227,10 +227,11 @@ developer account work:
 
 The runner can't be signed with just any tool. Its IPA contains a nested test
 bundle, `PlugIns/iCTRLUITests.xctest`, which needs its own signature. That
-bundle has to be signed first, from the inside out, and it has to carry the
-runner's bundle id. Most signers only recurse into `.framework`/`.appex` and
-leave the `.xctest` alone. The package then installs fine and **crashes the
-moment it launches**. Use one of the routes above, which handle this.
+bundle has to be signed first, from the inside out, and it has to carry an id
+under the runner's (`<runner id>.tests`). Most signers only recurse into
+`.framework`/`.appex` and leave the `.xctest` alone. The package then installs
+fine and **crashes the moment it launches**. Use one of the routes above, which
+handle this.
 
 **2. The Developer Disk Image (DDI) mounted.** XCUITest talks to the
 `testmanagerd` daemon, and that daemon only exists while a DDI is mounted. A
@@ -316,7 +317,7 @@ anything is signed. Without this check, iOS would reject the install with an
 error that never mentions the profile.
 
 The script does four things, in this order:
-1. sets the `.xctest`'s bundle id to the runner's;
+1. sets the `.xctest`'s bundle id to `<runner id>.tests`;
 2. signs from the inside out: loose dylibs → frameworks → `PlugIns/*` → the app;
 3. writes the entitlements a test runner needs, including `get-task-allow`;
 4. verifies every nested binary before it repacks.
@@ -338,7 +339,7 @@ iCTRLUITests-Runner.app/
 ├── Frameworks/
 │   └── libXCTCompatShim.dylib   ← must be signed, or dyld rejects it
 └── PlugIns/
-    └── iCTRLUITests.xctest/     ← signed FIRST, separately, with the runner's id
+    └── iCTRLUITests.xctest/     ← signed FIRST, separately, id <runner id>.tests
         └── iCTRLUITests
 ```
 
