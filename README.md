@@ -208,6 +208,15 @@ every response usable by a model.
 
 The runner IPA is about 1MB.
 
+## Building a legacy runner with a newer Xcode
+
+Xcode 27's prebuilt XCTRunner host has an iOS 17.0 minimum, even when this
+project's test target is compiled for iOS 16. For an **experimental iOS 16.3+
+runner-only build**, see [the source-built legacy host](iCTRLCompat/README-ios16.md).
+It compiles a replacement host and checks both Mach-O load commands and bundle
+metadata before packaging; it does not lower the minimum on Apple's binary.
+The ordinary `make ipa` build remains unchanged.
+
 ---
 
 # Installation

@@ -287,6 +287,12 @@ static void swizzled_setDelegate(id self, SEL _cmd, id<UIApplicationDelegate> de
 }
 
 + (void)armEarlyBackgrounding {
+    // The source-built legacy host must stay in front while XCTest requests
+    // automation authorization. Other runner builds keep the existing behavior.
+    if ([[NSBundle.mainBundle objectForInfoDictionaryKey:@"ICTRLKeepForegroundDuringBootstrap"] boolValue]) {
+        earlyLog(@"legacy host: keeping foreground during XCTest bootstrap");
+        return;
+    }
     if (sEarlyBackgroundArmed) { return; }
     sEarlyBackgroundArmed = YES;
     earlyLog(@"🏠 early-background armed — will suspend once nothing covers the runner");
