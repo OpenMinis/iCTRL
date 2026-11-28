@@ -217,13 +217,14 @@ The runner IPA is about 1MB.
 iCTRL's automation engine is an XCUITest runner, and iOS only runs one when two
 conditions hold. Sort out both before anything else:
 
-**1. A way to sign and install the IPA.** Both a free Apple ID and a paid
-developer account work:
+**1. A way to sign and install the IPA.** A free Apple ID, a paid developer
+account, and a jailbroken device all work:
 
 | You have | How |
 |---|---|
 | Free Apple ID | The **latest SideStore** signs and installs it → [A](#a-free-apple-id--sidestore) |
 | Paid developer account | Sign with [`Scripts/sign-ipa.sh`](Scripts/sign-ipa.sh) → [B](#b-paid-developer-account--scriptssign-ipash), or run from Xcode → [C](#c-paid-developer-account--xcode) |
+| Jailbroken device (AppSync Unified) | Ad-hoc sign with [`Scripts/sign-adhoc.sh`](Scripts/sign-adhoc.sh) — no Apple ID, no expiry → [D](#d-jailbroken-device--ad-hoc-no-apple-id) |
 
 The runner can't be signed with just any tool. Its IPA contains a nested test
 bundle, `PlugIns/iCTRLUITests.xctest`, which needs its own signature. That
@@ -369,6 +370,39 @@ edits made in Xcode.
 
 Xcode builds, signs, installs and launches the runner. The runner keeps running
 after the test session detaches, so you can quit Xcode and keep using the API.
+
+### D. Jailbroken device — ad-hoc, no Apple ID
+
+If the device is jailbroken with **AppSync Unified** (or anything else that
+patches `installd`/`amfid` to accept unsigned packages), sign the release IPA
+with `Scripts/sign-adhoc.sh`. No Apple ID, no provisioning profile, no 7-day
+certificate, and nothing to refresh:
+
+```bash
+Scripts/sign-adhoc.sh -i iCTRLUITests-Runner.ipa -u
+# → iCTRLUITests-Runner-adhoc.ipa, installed with ideviceinstaller
+```
+
+It signs inside out, gives the nested `.xctest` the runner's bundle id, injects
+`get-task-allow` (which is what lets `idevicedebug` attach and launch it) and
+verifies every nested binary before writing the IPA. The team identifier in the
+entitlements is a placeholder: with AppSync nothing compares it against a
+certificate, so there is no expiry to manage.
+
+**Why TrollStore cannot do this.** TrollStore re-signs packages with `ldid`,
+which only recurses into `.framework`/`.appex` and leaves
+`PlugIns/iCTRLUITests.xctest` untouched. The package installs, then crashes on
+launch with *"mapped file has no cdhash"* — the same failure older `ldid`-based
+SideStore releases had. `codesign`, driven from a script, seals exactly the
+bundles named above, which is the part TrollStore skips.
+
+**On iOS 16.** The release runner is built against the iOS 17 SDK, so its
+minimum is 17.0. `-m 16.0` lowers the plist minimum *and* every packaged
+Mach-O's `LC_BUILD_VERSION`, which is enough for the current runner to start on
+iOS 16.3 and serve the API — checked on an iPad 16.3.1 running `launch_app` →
+`find_element` → `tap` → screenshot. Treat it as a compatibility escape hatch
+rather than a supported build: the SDK is still 17, so verify the calls you
+depend on. For a runner actually compiled against the iOS 16 SDK, see #15.
 
 ---
 
@@ -740,6 +774,10 @@ Makefile         build + sign + package
   switched on at both ends. Endpoints that need no key (`/schema`, `/skill`,
   `/remote`, `/whoami`, `/pair`) answer over it too, and the screen stream is
   not encrypted on any channel.
+- **An ad-hoc install never expires; the DDI still does.** A package signed
+  with `Scripts/sign-adhoc.sh` on a jailbroken device stays valid across
+  reboots, but the mounted Developer Disk Image does not — remount it after
+  every restart and the runner will launch again.
 - Uses several private XCTest / `LSApplicationWorkspace` APIs — **not** App Store
   safe; intended for automation on your own devices.
 - `unlock` only wakes the screen. It cannot enter a passcode, and it is not a way
